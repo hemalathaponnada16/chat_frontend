@@ -19,8 +19,10 @@ function Chat() {
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
 
-  const username = user?.user?.username;
+  const username = user?.user?.username || user?.username;
   const chatContainerRef = useRef(null);
+  const roomRef = useRef(room);
+  const usernameRef = useRef(username);
   //const bottomRef = useRef(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   // 🔥 Generate Private Room
@@ -45,10 +47,23 @@ function Chat() {
 
   // 🔥 CONNECT + LISTENERS (RUN ONCE)
   useEffect(() => {
+    roomRef.current = room;
+    usernameRef.current = username;
+  }, [room, username]);
+
+  useEffect(() => {
     socket.connect();
 
     socket.on("connect", () => {
       console.log("Socket connected:", socket.id);
+      const activeRoom = roomRef.current;
+      const activeUser = usernameRef.current;
+      if (activeRoom && activeUser) {
+        socket.emit("join_room", {
+          room: activeRoom,
+          author: activeUser,
+        });
+      }
     });
 
     socket.on("previous_messages", (msgs) => {
@@ -56,6 +71,7 @@ function Chat() {
     });
 
     socket.on("receive_message", (msg) => {
+      if (msg.room !== roomRef.current) return;
       setMessages((prev) => [...prev, msg]);
     });
 
@@ -83,7 +99,7 @@ function Chat() {
       socket.on("messages_read", () => {
         setMessages((prev) =>
           prev.map((msg) =>
-            msg.author === username
+            msg.author === usernameRef.current
               ? { ...msg, status: "read" }
               : msg
           )
@@ -106,6 +122,8 @@ function Chat() {
   // 🔥 JOIN ROOM WHEN ROOM OR USER CHANGES
   useEffect(() => {
     if (!room || !username) return;
+    setMessages([]);
+    setTypingUser("");
 
     const joinCurrentRoom = () => {
       socket.emit("join_room", {
@@ -175,7 +193,7 @@ function Chat() {
   };
   // 🔥 Send Message
   const sendMessage = () => {
-    if (!message.trim()) return;
+    if (!message.trim() || !username || !room) return;
 
     socket.emit("send_message", {
       room,
