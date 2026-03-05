@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
 import { socket } from "../socket";
+import api from "../api/axios";
 
 function Chat() {
 
@@ -32,8 +33,7 @@ function Chat() {
   useEffect(() => {
     const fetchUsers = async () => {
       try {
-        const res = await fetch("http://localhost:5000/api/auth/all-users");
-        const data = await res.json();
+        const { data } = await api.get("/auth/all-users");
         setAllUsers(data);
       } catch (err) {
         console.error("Error fetching users:", err);
@@ -105,13 +105,24 @@ function Chat() {
 
   // 🔥 JOIN ROOM WHEN ROOM OR USER CHANGES
   useEffect(() => {
-    if (!room || !username || !socket.connected) return;
+    if (!room || !username) return;
 
-    socket.emit("join_room", {
-      room,
-      author: username,
-    });
+    const joinCurrentRoom = () => {
+      socket.emit("join_room", {
+        room,
+        author: username,
+      });
+    };
 
+    if (socket.connected) {
+      joinCurrentRoom();
+    } else {
+      socket.once("connect", joinCurrentRoom);
+    }
+
+    return () => {
+      socket.off("connect", joinCurrentRoom);
+    };
   }, [room, username]);
 
   // 🔥 Auto Scroll
@@ -172,7 +183,7 @@ function Chat() {
       message,
     });
 
-    socket.emit("stop_typing", { room });
+    socket.emit("stop_typing", { room, author: username });
 
     setMessage("");
   };
@@ -490,7 +501,7 @@ return (
               }
 
               typingTimeoutRef.current = setTimeout(() => {
-                socket.emit("stop_typing", { room });
+                socket.emit("stop_typing", { room, author: username });
               }, 1500);
             }}
             onKeyDown={(e) => e.key === "Enter" && sendMessage()}
@@ -841,5 +852,3 @@ export default Chat;
 // }
 
 // export default Chat;
-
-
